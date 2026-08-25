@@ -1,7 +1,7 @@
 use log::{error, info};
 use poise::serenity_prelude::{
-    ChannelType, Context, CreateChannel, Member, Permissions, PermissionOverwrite,
-    PermissionOverwriteType, UserId,
+    ChannelId, ChannelType, Context, CreateChannel, GuildChannel, GuildId, Member, Permissions,
+    PermissionOverwrite, PermissionOverwriteType, RoleId, UserId,
 };
 
 use crate::types::bot::Data;
@@ -44,16 +44,7 @@ pub async fn handle_role_update(ctx: &Context, data: &Data, new: &Option<Member>
         }
     };
 
-    // Matches on permission overwrites rather than the topic marker so that channels created
-    // manually (before this automation existed, or by an officer directly) are still recognized
-    // as this member's existing channel — as long as they're set up the same way a personal
-    // officer channel should be: under the category, with both the officer role and the member
-    // individually overwritten in.
-    let already_has_channel = channels.values().any(|c| {
-        c.parent_id == Some(category_id)
-            && c.permission_overwrites.iter().any(|o| o.kind == PermissionOverwriteType::Member(user_id))
-            && c.permission_overwrites.iter().any(|o| o.kind == PermissionOverwriteType::Role(officer_role))
-    });
+    let already_has_channel = channels.values().any(|c| is_member_channel(c, category_id, user_id, officer_role));
 
     if already_has_channel {
         return;
@@ -87,8 +78,62 @@ pub async fn handle_role_update(ctx: &Context, data: &Data, new: &Option<Member>
         .permissions(permissions);
 
     match new_member.guild_id.create_channel(&ctx.http, builder).await {
-        Ok(channel) => info!("Created personal officer channel #{} for {}", channel.name, new_member.user.name),
+        Ok(channel) => {
+            info!("Created personal officer channel #{} for {}", channel.name, new_member.user.name);
+            reconcile_duplicate_channels(ctx, new_member.guild_id, category_id, user_id, officer_role, &new_member.user.name).await;
+        }
         Err(e) => error!("Failed to create personal officer channel for {}: {}", new_member.user.name, e),
+    }
+}
+
+/// Matches on permission overwrites rather than the topic marker so that channels created
+/// manually (before this automation existed, or by an officer directly) are still recognized as
+/// this member's existing channel — as long as they're set up the same way a personal officer
+/// channel should be: under the category, with both the officer role and the member individually
+/// overwritten in.
+fn is_member_channel(channel: &GuildChannel, category_id: ChannelId, user_id: UserId, officer_role: RoleId) -> bool {
+    channel.parent_id == Some(category_id)
+        && channel.permission_overwrites.iter().any(|o| o.kind == PermissionOverwriteType::Member(user_id))
+        && channel.permission_overwrites.iter().any(|o| o.kind == PermissionOverwriteType::Role(officer_role))
+}
+
+/// Cloud Run briefly runs the old and new revision side by side during a deploy, and both can
+/// hold a live Discord gateway connection at once — each with its own in-process
+/// `personal_officer_channel_lock`, which can't see the other's. So two processes can both pass
+/// the already-has-channel check and both create one. Rather than trying to prevent that (would
+/// need a lock shared across processes), this cleans it up after the fact: re-list this member's
+/// channels and delete all but the oldest (lowest channel ID). Both racing processes converge on
+/// the same "oldest" channel independently, so this is safe to run from either or both of them.
+async fn reconcile_duplicate_channels(
+    ctx: &Context,
+    guild_id: GuildId,
+    category_id: ChannelId,
+    user_id: UserId,
+    officer_role: RoleId,
+    member_name: &str,
+) {
+    let channels = match guild_id.channels(&ctx.http).await {
+        Ok(channels) => channels,
+        Err(e) => {
+            error!("Failed to list guild channels while reconciling personal officer channels for {member_name}: {e}");
+            return;
+        }
+    };
+
+    let mut matches: Vec<_> =
+        channels.into_values().filter(|c| is_member_channel(c, category_id, user_id, officer_role)).collect();
+
+    if matches.len() <= 1 {
+        return;
+    }
+
+    matches.sort_by_key(|c| c.id);
+
+    for duplicate in matches.into_iter().skip(1) {
+        info!("Deleting duplicate personal officer channel #{} for {member_name}", duplicate.name);
+        if let Err(e) = duplicate.delete(&ctx.http).await {
+            error!("Failed to delete duplicate personal officer channel #{} for {member_name}: {e}", duplicate.name);
+        }
     }
 }
 
