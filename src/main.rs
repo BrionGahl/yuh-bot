@@ -7,6 +7,7 @@ mod clips;
 mod health;
 mod raid_notes;
 mod personal_officer_channels;
+mod announcements;
 
 use poise::serenity_prelude::{self as serenity, GatewayIntents};
 use tracing_subscriber::prelude::*;
@@ -20,6 +21,8 @@ use crate::types::bot::{Error, Data};
 async fn main() {
     let data = Data::new();
     let raid_notes_channel_id = data.config.raid_notes_channel_id;
+    let announcement_channel_id = data.config.announcement_channel_id;
+    let announcement_message = data.config.announcement_message.clone();
 
     tracing_subscriber::registry()
         .with(data.config.log_level)
@@ -106,6 +109,12 @@ async fn main() {
 
     tokio::spawn(health::serve());
     tokio::spawn(raid_notes::schedule_weekly_posts(client.http.clone(), raid_notes_channel_id));
+
+    if let Some(channel_id) = announcement_channel_id {
+        tokio::spawn(announcements::schedule_daily_announcement(client.http.clone(), channel_id, announcement_message));
+    } else {
+        info!("ANNOUNCEMENT_CHANNEL_ID not set; skipping daily noon announcement.");
+    }
 
     client.start().await.unwrap()
 }

@@ -17,6 +17,8 @@ pub struct Config {
     pub wowutils_group_id: String,
     pub clips_channel_ids: HashSet<ChannelId>,
     pub raid_notes_channel_id: ChannelId,
+    pub announcement_channel_id: Option<ChannelId>,
+    pub announcement_message: String,
     pub log_level: LevelFilter,
 }
 
@@ -60,6 +62,15 @@ impl Config {
                 .expect("Missing `RAID_NOTES_CHANNEL_ID` env variable.")
                 .parse::<u64>()
                 .expect("Failed to parse `RAID_NOTES_CHANNEL_ID` env variable.")),
+            // Optional: if unset, the daily noon announcement is simply not scheduled (see
+            // main.rs), so existing deploys don't break before this variable is configured.
+            announcement_channel_id: env::var("ANNOUNCEMENT_CHANNEL_ID")
+                .ok()
+                .filter(|s| !s.is_empty())
+                .map(|s| ChannelId::from(s.trim().parse::<u64>()
+                    .expect("Failed to parse `ANNOUNCEMENT_CHANNEL_ID` env variable."))),
+            announcement_message: env::var("ANNOUNCEMENT_MESSAGE")
+                .unwrap_or_else(|_| "📢 Daily announcement!".to_string()),
             log_level: env::var("LOG_LEVEL")
                 .unwrap_or_else(|_| "INFO".to_string())
                 .parse::<LevelFilter>()
