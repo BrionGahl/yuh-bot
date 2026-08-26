@@ -8,6 +8,7 @@ mod health;
 mod raid_notes;
 mod personal_officer_channels;
 mod announcements;
+mod mentions;
 
 use poise::serenity_prelude::{self as serenity, GatewayIntents};
 use tracing_subscriber::prelude::*;
@@ -22,7 +23,6 @@ async fn main() {
     let data = Data::new();
     let raid_notes_channel_id = data.config.raid_notes_channel_id;
     let announcement_channel_id = data.config.announcement_channel_id;
-    let announcement_message = data.config.announcement_message.clone();
     let raider_role_id = data.config.raider_role_id;
     let trial_role_id = data.config.trial_role_id;
 
@@ -62,7 +62,7 @@ async fn main() {
             commands::utilities::register(),
             commands::gambling::roll(),
             commands::gambling::gamble(),
-            commands::announcements::test_announcement(),
+            commands::mod_debug::test_announcement(),
         ],
         // Call to the event handler
         event_handler: |ctx, event, framework, data| {
@@ -117,7 +117,6 @@ async fn main() {
         tokio::spawn(announcements::schedule_weekly_announcement(
             client.http.clone(),
             channel_id,
-            announcement_message,
             raider_role_id,
             trial_role_id,
         ));

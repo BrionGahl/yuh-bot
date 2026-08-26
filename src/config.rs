@@ -18,7 +18,6 @@ pub struct Config {
     pub clips_channel_ids: HashSet<ChannelId>,
     pub raid_notes_channel_id: ChannelId,
     pub announcement_channel_id: Option<ChannelId>,
-    pub announcement_message: String,
     pub log_level: LevelFilter,
 }
 
@@ -69,8 +68,6 @@ impl Config {
                 .filter(|s| !s.is_empty())
                 .map(|s| ChannelId::from(s.trim().parse::<u64>()
                     .expect("Failed to parse `ANNOUNCEMENT_CHANNEL_ID` env variable."))),
-            announcement_message: env::var("ANNOUNCEMENT_MESSAGE")
-                .unwrap_or_else(|_| "📢 Weekly announcement!".to_string()),
             log_level: env::var("LOG_LEVEL")
                 .unwrap_or_else(|_| "INFO".to_string())
                 .parse::<LevelFilter>()

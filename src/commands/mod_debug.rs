@@ -1,4 +1,4 @@
-use crate::announcements::{post_announcement, render_message};
+use crate::announcements::{post_announcement, rendered_announcement};
 use crate::types::bot::{Context, Error};
 
 /// Immediately posts the configured weekly announcement, for testing without waiting for Tuesday
@@ -7,7 +7,7 @@ use crate::types::bot::{Context, Error};
     prefix_command,
     slash_command,
     ephemeral,
-    category = "Utilities",
+    category = "Debug",
     check = "crate::checks::check_is_moderator",
 )]
 pub async fn test_announcement(ctx: Context<'_>) -> Result<(), Error> {
@@ -16,11 +16,7 @@ pub async fn test_announcement(ctx: Context<'_>) -> Result<(), Error> {
         return Ok(());
     };
 
-    let message = render_message(
-        &ctx.data().config.announcement_message,
-        ctx.data().config.raider_role_id,
-        ctx.data().config.trial_role_id,
-    );
+    let message = rendered_announcement(ctx.data().config.raider_role_id, ctx.data().config.trial_role_id);
 
     post_announcement(ctx.serenity_context().http.as_ref(), channel_id, &message).await?;
 

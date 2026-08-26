@@ -6,26 +6,28 @@ use chrono_tz::{America::New_York, Tz};
 use log::{error, info};
 use poise::serenity_prelude::{ChannelId, CreateMessage, Error, Http, RoleId};
 
+use crate::mentions::replace_role_mentions;
+
 const ANNOUNCEMENT_HOUR: u32 = 12;
 const ANNOUNCEMENT_WEEKDAY: Weekday = Weekday::Tue;
 
-/// Runs forever, posting `message` to `channel_id` every Tuesday at 12:00 PM Eastern. Uses
+/// Template for the weekly announcement, with `@Raider`/`@Trial` placeholders expanded into real
+/// role mentions by `rendered_announcement`. Baked into the binary at compile time (rather than
+/// read from an env var) so it can hold arbitrary commas/newlines/formatting without fighting the
+/// deploy pipeline's KEY=VALUE env var parsing.
+const ANNOUNCEMENT_TEMPLATE: &str = include_str!("../resources/announcement_message.txt");
+
+/// Runs forever, posting the announcement to `channel_id` every Tuesday at 12:00 PM Eastern. Uses
 /// `America/New_York` rather than a fixed UTC offset so the announcement keeps landing at noon
 /// local time across the EST/EDT switch, matching the convention used for the weekly raid notes
 /// post.
-///
-/// `message` is a template straight from the `ANNOUNCEMENT_MESSAGE` env var: it may contain
-/// literal `\n` sequences (the deploy pipeline can't carry real newlines through Cloud Run's
-/// `env_vars` KV list without them being mistaken for separate variables) and `@Raider`/`@Trial`
-/// placeholders, both expanded once up front by `render_message`.
 pub async fn schedule_weekly_announcement(
     http: Arc<Http>,
     channel_id: ChannelId,
-    message: String,
     raider_role_id: RoleId,
     trial_role_id: RoleId,
 ) {
-    let message = render_message(&message, raider_role_id, trial_role_id);
+    let message = rendered_announcement(raider_role_id, trial_role_id);
 
     loop {
         let now = chrono::Utc::now().with_timezone(&New_York);
@@ -41,13 +43,12 @@ pub async fn schedule_weekly_announcement(
     }
 }
 
-/// Expands escaped newlines and role-name placeholders in the raw `ANNOUNCEMENT_MESSAGE` template
-/// into what should actually be sent to Discord.
-pub fn render_message(template: &str, raider_role_id: RoleId, trial_role_id: RoleId) -> String {
-    template
-        .replace("\\n", "\n")
-        .replace("@Raider", &format!("<@&{}>", raider_role_id))
-        .replace("@Trial", &format!("<@&{}>", trial_role_id))
+/// Expands the `@Raider`/`@Trial` placeholders in `ANNOUNCEMENT_TEMPLATE` into real role mentions.
+pub fn rendered_announcement(raider_role_id: RoleId, trial_role_id: RoleId) -> String {
+    replace_role_mentions(ANNOUNCEMENT_TEMPLATE, &[
+        ("@Raider", raider_role_id),
+        ("@Trial", trial_role_id),
+    ])
 }
 
 /// Finds the next Tuesday 12:00 PM strictly after `now`, in the same timezone as `now`.
