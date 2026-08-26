@@ -23,6 +23,8 @@ async fn main() {
     let raid_notes_channel_id = data.config.raid_notes_channel_id;
     let announcement_channel_id = data.config.announcement_channel_id;
     let announcement_message = data.config.announcement_message.clone();
+    let raider_role_id = data.config.raider_role_id;
+    let trial_role_id = data.config.trial_role_id;
 
     tracing_subscriber::registry()
         .with(data.config.log_level)
@@ -60,6 +62,7 @@ async fn main() {
             commands::utilities::register(),
             commands::gambling::roll(),
             commands::gambling::gamble(),
+            commands::announcements::test_announcement(),
         ],
         // Call to the event handler
         event_handler: |ctx, event, framework, data| {
@@ -111,9 +114,15 @@ async fn main() {
     tokio::spawn(raid_notes::schedule_weekly_posts(client.http.clone(), raid_notes_channel_id));
 
     if let Some(channel_id) = announcement_channel_id {
-        tokio::spawn(announcements::schedule_daily_announcement(client.http.clone(), channel_id, announcement_message));
+        tokio::spawn(announcements::schedule_weekly_announcement(
+            client.http.clone(),
+            channel_id,
+            announcement_message,
+            raider_role_id,
+            trial_role_id,
+        ));
     } else {
-        info!("ANNOUNCEMENT_CHANNEL_ID not set; skipping daily noon announcement.");
+        info!("ANNOUNCEMENT_CHANNEL_ID not set; skipping weekly Tuesday noon announcement.");
     }
 
     client.start().await.unwrap()
