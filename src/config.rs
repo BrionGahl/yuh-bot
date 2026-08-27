@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::env;
 
-use poise::serenity_prelude::{ChannelId, RoleId};
+use poise::serenity_prelude::{ChannelId, RoleId, UserId};
 use tracing_subscriber::filter::LevelFilter;
 
 #[derive(Debug)]
@@ -18,6 +18,10 @@ pub struct Config {
     pub clips_channel_ids: HashSet<ChannelId>,
     pub raid_notes_channel_id: ChannelId,
     pub announcement_channel_id: Option<ChannelId>,
+    /// If set, when this user deletes one of their own messages the bot reposts it in the same
+    /// channel — unless the audit log shows a moderator was the one who deleted it. Unset disables
+    /// the feature entirely.
+    pub replay_user_id: Option<UserId>,
     pub log_level: LevelFilter,
 }
 
@@ -68,6 +72,12 @@ impl Config {
                 .filter(|s| !s.is_empty())
                 .map(|s| ChannelId::from(s.trim().parse::<u64>()
                     .expect("Failed to parse `ANNOUNCEMENT_CHANNEL_ID` env variable."))),
+            // Optional: unset simply leaves the delete-and-replay feature off.
+            replay_user_id: env::var("REPLAY_USER_ID")
+                .ok()
+                .filter(|s| !s.is_empty())
+                .map(|s| UserId::from(s.trim().parse::<u64>()
+                    .expect("Failed to parse `REPLAY_USER_ID` env variable."))),
             log_level: env::var("LOG_LEVEL")
                 .unwrap_or_else(|_| "INFO".to_string())
                 .parse::<LevelFilter>()

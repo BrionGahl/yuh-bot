@@ -9,6 +9,7 @@ mod raid_notes;
 mod personal_officer_channels;
 mod announcements;
 mod mentions;
+mod message_replay;
 
 use poise::serenity_prelude::{self as serenity, GatewayIntents};
 use tracing_subscriber::prelude::*;
@@ -63,6 +64,7 @@ async fn main() {
             commands::gambling::roll(),
             commands::gambling::gamble(),
             commands::mod_debug::test_announcement(),
+            commands::mod_debug::test_replay(),
         ],
         // Call to the event handler
         event_handler: |ctx, event, framework, data| {
@@ -139,6 +141,13 @@ async fn event_handler(
         }
         serenity::FullEvent::Message { new_message } => {
             clips::enforce_clips_channel(ctx, data, new_message).await;
+            message_replay::remember_message(data, new_message).await;
+        }
+        serenity::FullEvent::MessageDelete { deleted_message_id, guild_id, .. } => {
+            message_replay::handle_message_delete(ctx, data, *deleted_message_id, *guild_id).await;
+        }
+        serenity::FullEvent::MessageDeleteBulk { multiple_deleted_messages_ids, .. } => {
+            message_replay::forget_messages(data, multiple_deleted_messages_ids).await;
         }
         serenity::FullEvent::GuildMemberUpdate { new, .. } => {
             personal_officer_channels::handle_role_update(ctx, data, new).await;

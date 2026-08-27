@@ -55,7 +55,7 @@ something the workflow does for you:
 3. In the GitHub repo, set these Actions **variables** (`Settings > Secrets and variables > Actions > Variables`)
    alongside the existing `GCP_REGION` / `GCP_PROJECT_ID`: `BOT_NAME`, `MOD_ROLE_ID`, `RAIDER_ROLE_ID`,
    `TRIAL_ROLE_ID`, `PERSONAL_OFFICER_CATEGORY_ID`, `CLIPS_CHANNEL_IDS`, `RAID_NOTES_CHANNEL_ID`,
-   `LOG_LEVEL`, `WOWUTILS_GROUP_ID`.
+   `LOG_LEVEL`, `WOWUTILS_GROUP_ID`. Optionally `REPLAY_USER_ID`.
 4. Set these Actions **secrets** (`Settings > Secrets and variables > Actions > Secrets`):
    `DISCORD_TOKEN`, `BART_TOKEN`, `WOWUTILS_TOKEN`. They're passed to the Cloud Run service as plain
    environment variables at deploy time — GitHub masks them in workflow logs, but anyone with viewer
@@ -86,9 +86,26 @@ CLIPS_CHANNEL_IDS=<comma-separated list of Discord channel IDs to restrict to vi
 
 # Weekly raid notes
 RAID_NOTES_CHANNEL_ID=<Discord forum channel ID to post weekly raid notes threads into>
+
+# Delete-and-replay (optional)
+REPLAY_USER_ID=<Discord user ID whose self-deleted messages the bot reposts>
 ```
 
 Note: the bot needs the **Manage Messages** permission in any channel listed in `CLIPS_CHANNEL_IDS` to delete non-video messages.
+
+### Delete-and-replay
+
+If `REPLAY_USER_ID` is set, the bot keeps the last few messages that user posts in memory, and
+when one of them is deleted it reposts the content in the same channel as an embed (author line
+with their name/avatar, the message text as the description, the original timestamp, and the
+first image attachment rendered inline — other attachments are listed as links). It **doesn't**
+repost if the guild audit log shows a moderator deleted the message: a user deleting their own
+message leaves no audit log entry, so any entry for the deletion is taken to mean someone else (a
+moderator) removed it. Bulk deletes (channel purges) are always treated as moderator actions and
+never replayed. Reposts suppress all mentions, so a deleted `@everyone` won't re-ping on replay.
+The bot needs the **View Audit Log** permission for the moderator check; without it, every
+deletion is replayed. Only messages seen since the bot last started are recoverable, and
+attachment links may 404 shortly after deletion. See `src/message_replay.rs`.
 
 ### Personal officer channels
 
