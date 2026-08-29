@@ -1,8 +1,15 @@
 use std::collections::HashSet;
 use std::env;
 
+use cron::Schedule;
 use poise::serenity_prelude::{ChannelId, RoleId, UserId};
 use tracing_subscriber::filter::LevelFilter;
+
+/// Cron expression used for the weekly raid notes post when `RAID_NOTES_CRON` is unset. Quartz-style
+/// 7-field format (`sec min hour day-of-month month day-of-week year`): Fridays at 9:00 AM. Times are
+/// evaluated in `America/New_York` (see `raid_notes.rs`), so this stays 9:00 AM local across the
+/// EST/EDT switch.
+const DEFAULT_RAID_NOTES_CRON: &str = "0 0 9 * * Fri *";
 
 #[derive(Debug)]
 pub struct Config {
@@ -17,6 +24,9 @@ pub struct Config {
     pub wowutils_group_id: String,
     pub clips_channel_ids: HashSet<ChannelId>,
     pub raid_notes_channel_id: ChannelId,
+    /// Schedule for the weekly raid notes forum post, from `RAID_NOTES_CRON` (a quartz-style cron
+    /// expression) or `DEFAULT_RAID_NOTES_CRON` when unset. Evaluated in `America/New_York`.
+    pub raid_notes_cron: Schedule,
     pub announcement_channel_id: Option<ChannelId>,
     /// If set, when this user deletes one of their own messages the bot reposts it in the same
     /// channel — unless the audit log shows a moderator was the one who deleted it. Unset disables
@@ -65,6 +75,14 @@ impl Config {
                 .expect("Missing `RAID_NOTES_CHANNEL_ID` env variable.")
                 .parse::<u64>()
                 .expect("Failed to parse `RAID_NOTES_CHANNEL_ID` env variable.")),
+            // Optional: unset (or empty) falls back to `DEFAULT_RAID_NOTES_CRON`. Quartz-style cron:
+            // `sec min hour day-of-month month day-of-week [year]`, e.g. `0 0 9 * * Fri *`.
+            raid_notes_cron: env::var("RAID_NOTES_CRON")
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| DEFAULT_RAID_NOTES_CRON.to_string())
+                .parse::<Schedule>()
+                .expect("Failed to parse `RAID_NOTES_CRON` env variable as a quartz-style cron expression (`sec min hour day-of-month month day-of-week [year]`)."),
             // Optional: if unset, the weekly Tuesday noon announcement is simply not scheduled
             // (see main.rs), so existing deploys don't break before this variable is configured.
             announcement_channel_id: env::var("ANNOUNCEMENT_CHANNEL_ID")

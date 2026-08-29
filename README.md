@@ -55,7 +55,7 @@ something the workflow does for you:
 3. In the GitHub repo, set these Actions **variables** (`Settings > Secrets and variables > Actions > Variables`)
    alongside the existing `GCP_REGION` / `GCP_PROJECT_ID`: `BOT_NAME`, `MOD_ROLE_ID`, `RAIDER_ROLE_ID`,
    `TRIAL_ROLE_ID`, `PERSONAL_OFFICER_CATEGORY_ID`, `CLIPS_CHANNEL_IDS`, `RAID_NOTES_CHANNEL_ID`,
-   `LOG_LEVEL`, `WOWUTILS_GROUP_ID`. Optionally `REPLAY_USER_ID`.
+   `LOG_LEVEL`, `WOWUTILS_GROUP_ID`. Optionally `REPLAY_USER_ID` and `RAID_NOTES_CRON`.
 4. Set these Actions **secrets** (`Settings > Secrets and variables > Actions > Secrets`):
    `DISCORD_TOKEN`, `BART_TOKEN`, `WOWUTILS_TOKEN`. They're passed to the Cloud Run service as plain
    environment variables at deploy time — GitHub masks them in workflow logs, but anyone with viewer
@@ -86,6 +86,7 @@ CLIPS_CHANNEL_IDS=<comma-separated list of Discord channel IDs to restrict to vi
 
 # Weekly raid notes
 RAID_NOTES_CHANNEL_ID=<Discord forum channel ID to post weekly raid notes threads into>
+RAID_NOTES_CRON=<optional quartz-style cron for when to post; defaults to "0 0 9 * * Fri *" (Fri 9:00 AM Eastern)>
 
 # Delete-and-replay (optional)
 REPLAY_USER_ID=<Discord user ID whose self-deleted messages the bot reposts>
@@ -120,7 +121,13 @@ the `PERSONAL_OFFICER_CATEGORY_ID` category. See `src/personal_officer_channels.
 
 ### Weekly raid notes
 
-Every Tuesday at 9:00 AM Eastern (DST-aware, via `America/New_York`), the bot creates a new forum
-post titled `Week of <Mon> <day> - <Sun> <day>` in the channel set by `RAID_NOTES_CHANNEL_ID`, with a
+On a cron schedule (default: every **Friday at 9:00 AM Eastern**), the bot creates a new forum post
+titled `Week of <Mon> <day> - <Sun> <day>` in the channel set by `RAID_NOTES_CHANNEL_ID`, with a
 placeholder starter message. `RAID_NOTES_CHANNEL_ID` must point at a **forum channel** — the bot needs
-permission to create posts there. See `src/raid_notes.rs`.
+permission to create posts there.
+
+The schedule comes from `RAID_NOTES_CRON`, a quartz-style 7-field cron expression
+(`sec min hour day-of-month month day-of-week year`); when unset it falls back to `0 0 9 * * Fri *`.
+Fire times are evaluated in `America/New_York`, so a given local time keeps holding across the
+EST/EDT switch. Examples: `0 0 9 * * Tue *` (Tuesdays 9:00 AM), `0 30 17 * * Fri *` (Fridays 5:30 PM).
+See `src/raid_notes.rs`.

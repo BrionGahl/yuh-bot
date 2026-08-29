@@ -23,6 +23,7 @@ use crate::types::bot::{Error, Data};
 async fn main() {
     let data = Data::new();
     let raid_notes_channel_id = data.config.raid_notes_channel_id;
+    let raid_notes_cron = data.config.raid_notes_cron.clone();
     let announcement_channel_id = data.config.announcement_channel_id;
     let raider_role_id = data.config.raider_role_id;
     let trial_role_id = data.config.trial_role_id;
@@ -64,6 +65,7 @@ async fn main() {
             commands::gambling::roll(),
             commands::gambling::gamble(),
             commands::mod_debug::test_announcement(),
+            commands::mod_debug::test_raid_notes(),
             commands::mod_debug::test_replay(),
         ],
         // Call to the event handler
@@ -113,7 +115,7 @@ async fn main() {
         .unwrap();
 
     tokio::spawn(health::serve());
-    tokio::spawn(raid_notes::schedule_weekly_posts(client.http.clone(), raid_notes_channel_id));
+    tokio::spawn(raid_notes::schedule_weekly_posts(client.http.clone(), raid_notes_channel_id, raid_notes_cron));
 
     if let Some(channel_id) = announcement_channel_id {
         tokio::spawn(announcements::schedule_weekly_announcement(

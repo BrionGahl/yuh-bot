@@ -1,54 +1,42 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::{DateTime, Datelike, Duration as ChronoDuration, TimeZone, Weekday};
-use chrono_tz::{America::New_York, Tz};
+use chrono::{Datelike, Duration as ChronoDuration, NaiveDate};
+use chrono_tz::America::New_York;
+use cron::Schedule;
 use log::{error, info};
 use poise::serenity_prelude::{ChannelId, CreateForumPost, CreateMessage, Error, Http};
 
-const POST_HOUR: u32 = 9;
-
-/// Runs forever, creating a new post in the raid notes forum channel every Tuesday at
-/// 9:00 AM Eastern. Uses `America/New_York` rather than a fixed UTC offset so the post
-/// keeps landing at 9:00 AM local time across the EST/EDT switch.
-pub async fn schedule_weekly_posts(http: Arc<Http>, channel_id: ChannelId) {
+/// Runs forever, creating a new post in the raid notes forum channel on the schedule given by
+/// `schedule` (the cron expression from `RAID_NOTES_CRON`). Fire times are computed in
+/// `America/New_York` rather than a fixed UTC offset, so a schedule like "9:00 AM Friday" keeps
+/// landing at 9:00 AM local time across the EST/EDT switch.
+pub async fn schedule_weekly_posts(http: Arc<Http>, channel_id: ChannelId, schedule: Schedule) {
     loop {
         let now = chrono::Utc::now().with_timezone(&New_York);
-        let target = next_tuesday_9am(now);
+        let Some(target) = schedule.after(&now).next() else {
+            error!("RAID_NOTES_CRON schedule has no upcoming fire times; raid notes scheduler stopping.");
+            return;
+        };
 
         let sleep_duration = (target - now).to_std().unwrap_or(Duration::ZERO);
         info!("Next weekly raid notes post scheduled for {}", target);
         tokio::time::sleep(sleep_duration).await;
 
-        if let Err(e) = post_weekly_raid_notes(&http, channel_id, target).await {
+        if let Err(e) = create_raid_notes_post(&http, channel_id, target.date_naive()).await {
             error!("Failed to create weekly raid notes post: {}", e);
         }
     }
 }
 
-/// Finds the next Tuesday 9:00 AM strictly after `now`, in the same timezone as `now`.
-fn next_tuesday_9am(now: DateTime<Tz>) -> DateTime<Tz> {
-    let mut date = now.date_naive();
-    loop {
-        if date.weekday() == Weekday::Tue {
-            let local = date.and_hms_opt(POST_HOUR, 0, 0).expect("valid time");
-            if let Some(candidate) = New_York.from_local_datetime(&local).single() {
-                if candidate > now {
-                    return candidate;
-                }
-            }
-        }
-        date = date.succ_opt().expect("date overflow while computing next Tuesday");
-    }
-}
-
-async fn post_weekly_raid_notes(
+/// Creates the raid notes forum post for the week (Mon–Sun) containing `date`, with a placeholder
+/// starter message. Returns the post title on success.
+pub async fn create_raid_notes_post(
     http: &Http,
     channel_id: ChannelId,
-    post_time: DateTime<Tz>,
-) -> Result<(), Error> {
-    let monday = post_time.date_naive()
-        - ChronoDuration::days(post_time.weekday().num_days_from_monday() as i64);
+    date: NaiveDate,
+) -> Result<String, Error> {
+    let monday = date - ChronoDuration::days(date.weekday().num_days_from_monday() as i64);
     let sunday = monday + ChronoDuration::days(6);
     let title = format!("Week of {} - {}", monday.format("%b %-d"), sunday.format("%b %-d"));
 
@@ -56,5 +44,5 @@ async fn post_weekly_raid_notes(
     channel_id.create_forum_post(http, CreateForumPost::new(title.clone(), message)).await?;
 
     info!("Created weekly raid notes post: {}", title);
-    Ok(())
+    Ok(title)
 }
